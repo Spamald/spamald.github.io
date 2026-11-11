@@ -120,9 +120,11 @@ def validate_organization_plan(
     dsl = DSLExecutor(file_manager)
     commands = dsl.parse(source)
     files = {item["path"] for item in inventory["files"]}
-    folders = {item["path"] for item in inventory["folders"]}
-    created_folders: set[str] = set()
+    file_keys = {path.casefold(): path for path in files}
+    folder_paths = {item["path"].casefold(): item["path"] for item in inventory["folders"]}
+    created_folder_keys: set[str] = set()
     moved_files: set[str] = set()
+    destination_file_keys: set[str] = set()
 
     for command in commands:
         action = command.action
@@ -140,16 +142,36 @@ def validate_organization_plan(
         if action_name == "create_folder":
             folder = _normalize_plan_path(action["path"], command.line_number)
             _reject_root_prefix(folder, file_manager.root.name, command.line_number)
-            if folder == "." or folder in folders or folder in created_folders:
+            if folder == ".":
                 raise DSLParseError(
-                    command.line_number,
-                    f"folder already exists or is duplicated: {folder}",
+                    command.line_number, "cannot create the managed root."
                 )
-            if folder in files:
-                raise DSLParseError(
-                    command.line_number, f"folder path conflicts with file: {folder}"
-                )
-            created_folders.add(folder)
+            parts = PurePosixPath(folder).parts
+            for index in range(len(parts)):
+                ancestor = PurePosixPath(*parts[: index + 1]).as_posix()
+                ancestor_key = ancestor.casefold()
+                is_leaf = index == len(parts) - 1
+                if ancestor_key in file_keys:
+                    raise DSLParseError(
+                        command.line_number,
+                        f"folder path conflicts with file: {ancestor}",
+                    )
+                existing_folder = folder_paths.get(ancestor_key)
+                if existing_folder is not None and existing_folder != ancestor:
+                    raise DSLParseError(
+                        command.line_number,
+                        f"folder path casing does not match existing folder: {existing_folder}",
+                    )
+                if is_leaf and (
+                    ancestor_key in folder_paths
+                    or ancestor_key in created_folder_keys
+                ):
+                    raise DSLParseError(
+                        command.line_number,
+                        f"folder already exists or is duplicated: {ancestor}",
+                    )
+                if ancestor_key not in folder_paths:
+                    created_folder_keys.add(ancestor_key)
             continue
 
         source_path = _normalize_plan_path(action["path"], command.line_number)
@@ -157,7 +179,8 @@ def validate_organization_plan(
             action["destination"], command.line_number, allow_root=True
         )
         _reject_root_prefix(destination, file_manager.root.name, command.line_number)
-        if source_path not in files:
+        source_key = source_path.casefold()
+        if source_key not in file_keys or file_keys[source_key] != source_path:
             raise DSLParseError(
                 command.line_number,
                 f"source file is not in the inventory: {source_path}",
@@ -166,11 +189,35 @@ def validate_organization_plan(
             raise DSLParseError(
                 command.line_number, f"file is moved more than once: {source_path}"
             )
-        if destination not in folders and destination not in created_folders:
+        destination_key = destination.casefold()
+        existing_destination = folder_paths.get(destination_key)
+        if existing_destination is not None and existing_destination != destination:
+            raise DSLParseError(
+                command.line_number,
+                f"destination casing does not match existing folder: {existing_destination}",
+            )
+        if destination_key not in folder_paths and destination_key not in created_folder_keys:
             raise DSLParseError(
                 command.line_number,
                 f"destination folder must exist or be created earlier: {destination}",
             )
+        destination_file = (
+            PurePosixPath(source_path).name
+            if destination == "."
+            else f"{destination}/{PurePosixPath(source_path).name}"
+        )
+        destination_file_key = destination_file.casefold()
+        if destination_file_key in destination_file_keys:
+            raise DSLParseError(
+                command.line_number,
+                f"multiple files would have the same destination: {destination_file}",
+            )
+        if destination_file_key in file_keys:
+            raise DSLParseError(
+                command.line_number,
+                f"destination conflicts with an inventoried file: {destination_file}",
+            )
+        destination_file_keys.add(destination_file_key)
         moved_files.add(source_path)
 
     missing_files = files - moved_files
@@ -199,6 +246,21 @@ def _normalize_plan_path(
         return normalized
     if normalized in ("", "."):
         raise DSLParseError(line_number, "a relative path is required.")
+    reserved_names = {
+        "CON",
+        "PRN",
+        "AUX",
+        "NUL",
+        *(f"COM{index}" for index in range(1, 10)),
+        *(f"LPT{index}" for index in range(1, 10)),
+    }
+    for part in posix.parts:
+        if (
+            any(ord(char) < 32 or char in '<>:"|?*' for char in part)
+            or part.endswith((".", " "))
+            or part.split(".", 1)[0].upper() in reserved_names
+        ):
+            raise DSLParseError(line_number, f"unsupported path component: {part}")
     return normalized
 
 

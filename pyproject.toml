@@ -7,6 +7,14 @@ name = "safe-file-agent"
 version = "0.1.0"
 description = "A confirmation-gated, LLM-powered local file-management agent."
 requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "python-multipart>=0.0.9",
+    "uvicorn>=0.30,<1",
+]
+
+[project.optional-dependencies]
+test = ["httpx>=0.27,<1"]
 
 [project.scripts]
 file-agent = "agent.cli:main"
