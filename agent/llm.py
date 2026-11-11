@@ -140,9 +140,12 @@ class GroqClient:
             except HTTPError as exc:
                 if exc.code == 429 or 500 <= exc.code < 600:
                     if attempt + 1 < self.max_attempts:
-                        self._wait_before_retry(attempt, exc.headers.get("Retry-After"))
+                        retry_after = exc.headers.get("Retry-After")
+                        exc.close()
+                        self._wait_before_retry(attempt, retry_after)
                         continue
                 details = exc.read().decode("utf-8", errors="replace")
+                exc.close()
                 ray_id = exc.headers.get("CF-Ray")
                 request_id = exc.headers.get("x-request-id")
                 diagnostic_id = ray_id or request_id

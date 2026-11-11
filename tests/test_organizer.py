@@ -97,6 +97,24 @@ class OrganizationInventoryTests(unittest.TestCase):
                 inventory,
             )
 
+    def test_plan_rejects_case_mismatched_destination_and_unsafe_names(self):
+        inventory = build_inventory(self.file_manager)
+        with self.assertRaisesRegex(DSLParseError, "casing does not match"):
+            validate_organization_plan(
+                'MOVE_FILE "notes.txt" TO "Images"\n'
+                'MOVE_FILE "images/photo.png" TO "Images"\n',
+                self.file_manager,
+                inventory,
+            )
+        with self.assertRaisesRegex(DSLParseError, "unsupported path component"):
+            validate_organization_plan(
+                'CREATE_FOLDER "CON"\n'
+                'MOVE_FILE "notes.txt" TO "CON"\n'
+                'MOVE_FILE "images/photo.png" TO "CON"\n',
+                self.file_manager,
+                inventory,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
