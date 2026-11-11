@@ -1,0 +1,1 @@
+Sample nested file for testing moving a file between folders.

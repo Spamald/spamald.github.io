@@ -1,0 +1,4 @@
+# Sample script for the test_files folder
+LIST
+INFO "readme.txt"
+CREATE_FOLDER "demo_folder"

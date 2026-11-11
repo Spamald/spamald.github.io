@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "safe-file-agent"
+version = "0.1.0"
+description = "A confirmation-gated, LLM-powered local file-management agent."
+requires-python = ">=3.10"
+
+[project.scripts]
+file-agent = "agent.cli:main"
+
+[tool.setuptools]
+packages = ["agent"]

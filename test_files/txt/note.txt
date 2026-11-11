@@ -1,0 +1,1 @@
+Sample notes for testing file renames, moves, and removals.
